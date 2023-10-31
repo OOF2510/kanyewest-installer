@@ -3,8 +3,8 @@ const { exec } = require("child_process");
 const path = require("path");
 const url = require("url");
 const fs = require("fs");
-const fetch = require('node-fetch');
-const extract = require('extract-zip');
+const fetch = require("node-fetch");
+const extract = require("extract-zip");
 
 let folderPath = "C:/Windows/tracing/KanyeWest";
 let mainWindow;
@@ -15,6 +15,7 @@ function createWindow() {
     height: 360,
     webPreferences: {
       nodeIntegration: true,
+      contextIsolation: false,
     },
   });
 
@@ -41,55 +42,81 @@ app.on("activate", function () {
   if (mainWindow === null) createWindow();
 });
 
-ipcMain.on("startInstallation", async (event, data) => {
-  // create folder
+ipcMain.on("startInstallation", (event, data) => {
+  mainWindow.loadURL(
+    url.format({
+      pathname: path.join(__dirname, "console.html"),
+      protocol: "file:",
+      slashes: true,
+    })
+  );
+
+  const selectedApps = data;
+  console.log(`Apps to install: ${selectedApps}`)
+
   fs.mkdir(folderPath, { recursive: true }, (err) => {
     if (err) {
-      console.error(`Error creating folder: ${err}`);
+      mainWindow.webContents.send(
+        "installation-status",
+        `Error creating folder: ${err}`
+      );
     } else {
-      console.log(`Folder created successfully: ${folderPath}`);
+      mainWindow.webContents.send(
+        "installation-status",
+        `Folder created successfully: ${folderPath}`
+      );
     }
   });
-  // set perms
+
   exec(
     `icacls ${folderPath} /grant Users:(OI)(CI)(F) /T`,
     (error, stdout, stderr) => {
       if (error) {
-        console.error(`Error: ${error}`);
+        mainWindow.webContents.send("installation-status", `Error: ${error}`);
       } else {
-        console.log(`Command executed successfully: ${stdout}`);
+        mainWindow.webContents.send(
+          "installation-status",
+          `Command executed successfully: ${stdout}`
+        );
       }
     }
   );
 
   // Loop through the selected apps and download/extract them
   for (const app of selectedApps) {
-    const appUrl = `https://kanyewestappdl.netlify.app/${app}.zip`; // Replace with the actual download URL
-    const appFolder = path.join(installationFolder, app);
+    const appUrl = `https://kanyewestappdl.netlify.app/${app}.zip`;
+  const appFolder = path.join(folderPath, `${app}`);
+    mainWindow.webContents.send("installation-status", `Downloading ${app} from ${appUrl}`);
 
-    try {
-      // Download the app ZIP archive
-      const response = await fetch(appUrl);
-      if (!response.ok) {
-        console.error(`Failed to download ${app}: ${response.status}`);
-        continue;
-      }
-
-      // Create a directory for the app
-      fs.mkdir(appFolder, { recursive: true }, (err) => {
-        if (err) {
-          console.error(`Error creating app folder: ${err}`);
-          return;
+    fetch(appUrl)
+      .then((response) => {
+        if (!response.ok) {
+          mainWindow.webContents.send("installation-status", `Failed to download ${app}: ${response.status} from ${appUrl}`);
+          return Promise.reject(`Failed to download ${app}: ${response.status} from ${appUrl}`);
         }
-        console.log(`App folder created successfully: ${appFolder}`);
+        return response;
+      })
+      .then((response) => {
+        // Create a directory for the app
+        fs.mkdir(appFolder, { recursive: true }, (err) => {
+          if (err) {
+            mainWindow.webContents.send("installation-status", `Error creating app folder: ${err}`);
+          } else {
+            mainWindow.webContents.send("installation-status", `App folder created successfully: ${appFolder}`);
+
+            // Extract the ZIP archive to the app folder
+            extract(response.body, { dir: appFolder }, (err) => {
+              if (err) {
+                mainWindow.webContents.send("installation-status", `Error installing ${app}: ${err}`);
+              } else {
+                mainWindow.webContents.send("installation-status", `App ${app} extracted successfully.`);
+              }
+            });
+          }
+        });
+      })
+      .catch((error) => {
+        mainWindow.webContents.send("installation-status", `Error installing ${app}: ${error}`);
       });
-
-      // Extract the ZIP archive to the app folder
-      await extract(response.body, { dir: appFolder });
-      console.log(`App ${app} extracted successfully.`);
-    } catch (error) {
-      console.error(`Error installing ${app}: ${error}`);
-    }
   }
-
 });

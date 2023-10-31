@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <div id="log"></div>
+    <script>
+      const { ipcRenderer } = require("electron");
+
+      const logDiv = document.getElementById("log");
+
+      ipcRenderer.on("installation-status", (event, message) => {
+        const logMessage = document.createElement("p");
+        logMessage.textContent = message;
+        logDiv.appendChild(logMessage);
+      });
+    </script>
+  </body>
+</html>
