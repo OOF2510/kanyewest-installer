@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>KanyeWest Setup</title>
+  </head>
+  <body>
+    <h1>KanyeWest Installer</h1>
+    <img src="../assets/kanyeStare.png" alt="Ye" width="500" height="200" />
+    <p>Please select what to install. Click Next when done</p>
+    <label
+      ><input type="checkbox" id="option1" value="5d_chess" /> 5d Chess with
+      Multiverse Time Travel</label
+    ><br />
+    <label><input type="checkbox" id="option2" value="7zip" /> 7-Zip</label
+    ><br />
+    <label><input type="checkbox" id="option3" value="2048" /> 2048</label
+    ><br />
+    <label
+      ><input type="checkbox" id="option4" value="assault_cube" /> Assault
+      Cube</label
+    ><br />
+    <label><input type="checkbox" id="option5" value="dolphin" /> Dolphin</label
+    ><br />
+    <label><input type="checkbox" id="option6" value="dosbox" /> DOSBox</label
+    ><br />
+    <label><input type="checkbox" id="option7" value="epic" /> Epic</label
+    ><br />
+    <label
+      ><input type="checkbox" id="option8" value="funny_truck" /> Funny
+      Truck</label
+    ><br />
+    <label><input type="checkbox" id="option9" value="krita" /> Krita</label
+    ><br />
+    <label><input type="checkbox" id="option10" value="obs" /> OBS</label><br />
+    <label
+      ><input type="checkbox" id="option11" value="openttd" /> OpenTTD</label
+    ><br />
+    <label><input type="checkbox" id="option12" value="pcsx2" /> PCSX2</label
+    ><br />
+    <label
+      ><input type="checkbox" id="option13" value="people_playground" /> People
+      Playground</label
+    ><br />
+    <label><input type="checkbox" id="option14" value="python" /> Python</label
+    ><br />
+    <label
+      ><input type="checkbox" id="option15" value="retroarch" />
+      RetroArch</label
+    ><br />
+    <label
+      ><input type="checkbox" id="option16" value="super_tux_kart" /> Super Tux
+      Kart</label
+    ><br />
+    <label
+      ><input type="checkbox" id="option17" value="super_tux" /> Super
+      Tux</label
+    ><br />
+    <label
+      ><input type="checkbox" id="option18" value="ultrasurf" />
+      Ultrasurf</label
+    ><br />
+
+    <button id="cancelButton">Cancel</button>
+    <button id="nextButton">Next</button>
+    <script>
+      const { ipcRenderer } = require('electron');
+
+      document.getElementById('nextButton').addEventListener('click', () => {
+        // Collect selected options as an array
+        const selectedOptions = [];
+        for (let i = 1; i <= 18; i++) {
+          if (document.getElementById('option' + i).checked) {
+            selectedOptions.push(document.getElementById('option' + i).value);
+          }
+        }
+
+        // Send the selected options array to the main process
+        ipcRenderer.send('startInstallation', selectedOptions);
+      });
+
+      document.getElementById('cancelButton').addEventListener('click', () => {
+        // Handle the "Cancel" button click
+        // Exit the application or perform cleanup
+      });
+    </script>
+  </body>
+</html>
