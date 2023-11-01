@@ -1,16 +1,13 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const { exec } = require("child_process");
 const path = require("path");
-const url = require("url");
 const fs = require("fs");
 const fetch = require("node-fetch");
-const extract = require("extract-zip");
+const extractZip = require("extract-zip");
 const ProgressBar = require("electron-progressbar");
-const fse = require("fs-extra");
-const releases = require("electron-releases");
-const AdmZip = require("adm-zip");
+const ws = require("windows-shortcuts");
 
-let folderPath = "C:/Windows/tracing/KanyeWest";
+const folderPath = "C:/Windows/tracing/KanyeWest";
 let mainWindow;
 
 function createWindow() {
@@ -23,66 +20,62 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadURL(
-    url.format({
-      pathname: path.join(__dirname, "index.html"),
-      protocol: "file:",
-      slashes: true,
-    })
-  );
+  mainWindow.loadFile(path.join(__dirname, "index.html"));
 
-  mainWindow.on("closed", function () {
+  mainWindow.on("closed", () => {
     mainWindow = null;
   });
 }
 
 app.on("ready", createWindow);
 
-app.on("window-all-closed", function () {
-  if (process.platform !== "darwin") app.quit();
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
 });
 
-app.on("activate", function () {
-  if (mainWindow === null) createWindow();
+app.on("activate", () => {
+  if (mainWindow === null) {
+    createWindow();
+  }
 });
 
 ipcMain.on("startInstallation", async (event, data) => {
-  mainWindow.loadURL(
-    url.format({
-      pathname: path.join(__dirname, "console.html"),
-      protocol: "file:",
-      slashes: true,
-    })
-  );
+  // Load console.html when starting installation
+  mainWindow.loadFile(path.join(__dirname, "console.html"));
 
   const selectedApps = data;
-  mainWindow.webContents.send(
-    "installation-status",
+  await logMessage(
     `Apps to install: ${selectedApps.join(", ")}`
   );
 
   try {
     await createFolder(folderPath);
     await executeCommand(`icacls ${folderPath} /grant Users:(OI)(CI)(F) /T`);
+    await logMessage(`Created ${folderPath} and set permissions`)
 
     for (const app of selectedApps) {
+      await logMessage(`Next Up: ${app}`)
       await installApp(app, folderPath);
     }
+    
+    await logMessage( `Installation complete`);
+
   } catch (error) {
     console.error(`Error during installation: ${error}`);
   }
 });
 
-function createFolder(folderPath) {
-  return new Promise((resolve, reject) => {
-    fs.mkdir(folderPath, { recursive: true }, (err) => {
-      if (err) {
-        reject(`Error creating folder: ${err}`);
-      } else {
-        resolve(`Folder created successfully: ${folderPath}`);
-      }
-    });
-  });
+async function createFolder(folderPath) {
+  try {
+    await fs.promises.mkdir(folderPath, { recursive: true });
+    await logMessage( `Folder created successfully: ${folderPath}`);
+  } catch (err) {
+    const errorMessage = `Error creating folder: ${err}`;
+    await logMessage( errorMessage);
+    console.error(errorMessage); // Log the error to the console as well
+  }
 }
 
 function executeCommand(command) {
@@ -92,18 +85,6 @@ function executeCommand(command) {
         reject(`Error: ${error}`);
       } else {
         resolve(`Command executed successfully: ${stdout}`);
-      }
-    });
-  });
-}
-
-function extractZip(outputPath, appFolder) {
-  return new Promise((resolve, reject) => {
-    extract(outputPath, { dir: appFolder }, (err) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve();
       }
     });
   });
@@ -152,21 +133,27 @@ function getAppExe(app) {
   }
 }
 
-function createDesktopShortcut(appFolder, exe, appName) {
-  const desktopPath = app.getPath("desktop");
-  const shortcutPath = path.join(desktopPath, `${appName}.lnk`);
-  const targetPath = path.join(appFolder, exe);
 
-  releases.createShortcut(targetPath, shortcutPath, (err) => {
-    if (err) {
-      console.error(`Error creating desktop shortcut: ${err}`);
-    } else {
-      mainWindow.webContents.send(
-        "installation-status",
-        `Desktop shortcut for ${appName} created at ${shortcutPath}`
-      );
-    }
-  });
+async function createDesktopShortcut(appFolder, exeName, appName) {
+  const desktopPath = app.getPath('desktop'); // Get the desktop path
+  const shortcutPath = path.join(desktopPath, `${appName}.lnk`);
+  const targetPath = path.join(appFolder, exeName);
+
+  try {
+    ws.create(shortcutPath, targetPath, async function(err) {
+      if (err) {
+        const errorMessage = `Error creating desktop shortcut: ${err}`;
+        await logMessage(errorMessage);
+        console.error(errorMessage);
+      } else {
+        await logMessage(`Desktop shortcut for ${appName} created on the desktop`);
+      }
+    });
+  } catch (err) {
+    const errorMessage = `Error creating desktop shortcut: ${err.message}`;
+    await logMessage(errorMessage);
+    console.error(errorMessage);
+  }
 }
 
 async function installApp(app, folderPath) {
@@ -185,21 +172,22 @@ async function installApp(app, folderPath) {
   });
 
   try {
+  await createFolder(appFolder)
     const response = await fetch(appUrl);
+
     if (!response.ok) {
       progressBar.setCompleted();
-      mainWindow.webContents.send(
-        "installation-status",
-        `Error downloading ${app}: ${error}`
+      await logMessage(
+        
+        `Error downloading ${app}: ${response.statusText}`
       );
       return;
     }
 
-    const contentLength = response.headers.get("content-length");
+    const contentLength = +response.headers.get("content-length");
     const outputPath = path.join(appFolder, `${app}.zip`);
     const fileStream = fs.createWriteStream(outputPath);
 
-    // Initialize receivedBytes to 0
     let receivedBytes = 0;
 
     response.body
@@ -212,55 +200,58 @@ async function installApp(app, folderPath) {
       .on("end", async () => {
         fileStream.end();
         progressBar.setCompleted();
-        mainWindow.webContents.send(
-          "installation-status",
+        await logMessage(
+          
           `Downloaded ${app} successfully`
         );
 
-        fileStream.on("close", async () => {
-          const zip = new AdmZip(outputPath);
+        try {
+          await extractZip(outputPath, { dir: appFolder });
+
+          // Create a desktop shortcut if an executable mapping exists
+          const exe = getAppExe(app);
+          if (exe) {
+            await createDesktopShortcut(appFolder, exe, app);
+          }
+
+          // Delete the ZIP file
           try {
-            zip.extractAllTo(appFolder, /*overwrite*/ true);
-
-            // Create desktop shortcut
-            const exe = getAppExe(app);
-            if (exe) {
-              createDesktopShortcut(appFolder, exe, app);
-            }
-
-            // Delete the ZIP file
-            fs.unlink(outputPath, (err) => {
+            fs.unlink(outputPath, async (err) => {
               if (err) {
-                console.error(`Error deleting ZIP file: ${err}`);
-              } else {
-                console.log(`Deleted ZIP file: ${outputPath}`);
+                const errorMessage = `Error deleting ZIP file for ${app}: ${err.message}`;
+                await logMessage(errorMessage);
+                console.error(errorMessage);
               }
             });
-
-            mainWindow.webContents.send(
-              "installation-status",
-              `Installation complete`
-            );
+            
           } catch (err) {
-            mainWindow.webContents.send(
-              "installation-status",
-              `Error installing ${app}: ${err}`
-            );
+            const errorMessage = `Error deleting ZIP file for ${app}: ${err.message}`;
+            await logMessage( errorMessage);
+            console.error(errorMessage);
           }
-        });
+        } catch (err) {
+          await logMessage(
+            
+            `Error installing ${app}: ${err.message}`
+          );
+        }
       })
-      .on("error", (err) => {
+      .on("error", async (err) => {
         progressBar.setCompleted();
-        mainWindow.webContents.send(
-          "installation-status",
-          `Error downloading ${app}: ${err}`
+        await logMessage(
+          
+          `Error downloading ${app}: ${err.message}`
         );
       });
   } catch (error) {
     progressBar.setCompleted();
-    mainWindow.webContents.send(
-      "installation-status",
-      `Error downloading ${app}: ${error}`
+    await logMessage(
+      `Error downloading ${app}: ${error.message}`
     );
   }
+}
+
+async function logMessage(message) {
+  mainWindow.webContents.send("installation-status", message);
+  console.log(message);
 }
