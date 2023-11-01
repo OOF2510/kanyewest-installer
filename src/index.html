@@ -7,6 +7,7 @@
     <h1>KanyeWest Installer</h1>
     <img src="../assets/kanyeStare.png" alt="Ye" width="500" height="200" />
     <p>Please select what to install. Click Next when done</p>
+    <!-- <button id="shortcutsButton">Update Icons</button> -->
     <label
       ><input type="checkbox" id="option1" value="5d_chess" /> 5d Chess with
       Multiverse Time Travel</label
@@ -82,6 +83,10 @@
         // Handle the "Cancel" button click
         // Exit the application or perform cleanup
       });
+
+      document.getElementById('shortcutsButton').addEventListener('click', () => {
+        ipcRenderer.send('updateIcons')
+      })
     </script>
   </body>
 </html>

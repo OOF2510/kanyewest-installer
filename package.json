@@ -1,7 +1,7 @@
 {
   "name": "kanyewest",
   "productName": "KanyeWest",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "My Electron application description",
   "main": "src/index.js",
   "scripts": {
@@ -16,7 +16,6 @@
   },
   "license": "MIT",
   "dependencies": {
-    "adm-zip": "^0.5.10",
     "create-desktop-shortcuts": "^1.10.1",
     "electron-progressbar": "^2.1.0",
     "electron-releases": "^3.1171.0",

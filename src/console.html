@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <body>
-    <div id="log"></div>
+    <div id="log" style="height: 600px; overflow: auto;"></div>
     <script>
       const { ipcRenderer } = require("electron");
 
@@ -11,6 +11,9 @@
         const logMessage = document.createElement("p");
         logMessage.textContent = message;
         logDiv.appendChild(logMessage);
+        
+        // Automatically scroll to the bottom of the log
+        logDiv.scrollTop = logDiv.scrollHeight;
       });
     </script>
   </body>

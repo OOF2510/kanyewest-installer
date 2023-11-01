@@ -45,34 +45,68 @@ ipcMain.on("startInstallation", async (event, data) => {
   mainWindow.loadFile(path.join(__dirname, "console.html"));
 
   const selectedApps = data;
-  await logMessage(
-    `Apps to install: ${selectedApps.join(", ")}`
-  );
+  await logMessage(`Apps to install: ${selectedApps.join(", ")}`);
 
   try {
     await createFolder(folderPath);
     await executeCommand(`icacls ${folderPath} /grant Users:(OI)(CI)(F) /T`);
-    await logMessage(`Created ${folderPath} and set permissions`)
+    await logMessage(`Created ${folderPath} and set permissions`);
 
     for (const app of selectedApps) {
-      await logMessage(`Next Up: ${app}`)
+      await logMessage(`Next Up: ${app}`);
       await installApp(app, folderPath);
     }
-    
-    await logMessage( `Installation complete`);
 
+    await logMessage(`Installation complete`);
   } catch (error) {
     console.error(`Error during installation: ${error}`);
+  }
+});
+
+ipcMain.on("updateIcons", async () => {
+  mainWindow.loadFile(path.join(__dirname, "console.html"));
+  await logMessage("Checking for apps installed with KanyeWest");
+  try {
+    // List the apps installed with KanyeWest
+    const appFolders = fs.readdirSync(folderPath);
+
+    for (const appFolder of appFolders) {
+      // Check if the app has a corresponding .url file on the desktop
+      const appName = path.basename(appFolder);
+      const desktopShortcutPath = path.join(
+        app.getPath("desktop"),
+        `${appName}.url`
+      );
+
+      if (fs.existsSync(desktopShortcutPath)) {
+        // Delete the existing .url file
+        fs.unlinkSync(desktopShortcutPath);
+
+        // Recreate the desktop shortcut with a new icon
+        const exeName = getAppExe(appName);
+        if (exeName) {
+          await createDesktopShortcut(
+            path.join(folderPath, appFolder),
+            exeName,
+            appName
+          );
+          await logMessage(`Icon updated for ${appName}`);
+        }
+      }
+    }
+    await logMessage("Icons updated for installed apps");
+  } catch (error) {
+    console.error(`Error updating icons: ${error}`);
   }
 });
 
 async function createFolder(folderPath) {
   try {
     await fs.promises.mkdir(folderPath, { recursive: true });
-    await logMessage( `Folder created successfully: ${folderPath}`);
+    await logMessage(`Folder created successfully: ${folderPath}`);
   } catch (err) {
     const errorMessage = `Error creating folder: ${err}`;
-    await logMessage( errorMessage);
+    await logMessage(errorMessage);
     console.error(errorMessage); // Log the error to the console as well
   }
 }
@@ -132,16 +166,27 @@ function getAppExe(app) {
   }
 }
 
-
 async function createDesktopShortcut(appFolder, exeName, appName) {
   const desktopPath = app.getPath("desktop"); // Get the desktop path
   const shortcutPath = path.join(desktopPath, `${appName}.url`);
   const targetPath = path.join(appFolder, exeName);
 
-  const shortcutContent = `[InternetShortcut]\nURL=file://${targetPath}\n`;
+  const iconSourcePath = path.join(__dirname, `../assets/icons/${appName}.ico`);
+  const iconTargetPath = path.join(appFolder, `${appName}.ico`); // Destination path for the icon
+
+  const shortcutContent = `[InternetShortcut]
+URL=file://${targetPath}
+IconFile=${iconTargetPath}
+IconIndex=0
+`;
 
   try {
+    // Copy the ICO file to the app folder
+    fs.copyFileSync(iconSourcePath, iconTargetPath);
+
+    // Create the desktop shortcut with the new icon
     fs.writeFileSync(shortcutPath, shortcutContent);
+
     await logMessage(`Desktop shortcut for ${appName} created on the desktop`);
   } catch (err) {
     const errorMessage = `Error creating desktop shortcut: ${err.message}`;
@@ -166,15 +211,12 @@ async function installApp(app, folderPath) {
   });
 
   try {
-  await createFolder(appFolder)
+    await createFolder(appFolder);
     const response = await fetch(appUrl);
 
     if (!response.ok) {
       progressBar.setCompleted();
-      await logMessage(
-        
-        `Error downloading ${app}: ${response.statusText}`
-      );
+      await logMessage(`Error downloading ${app}: ${response.statusText}`);
       return;
     }
 
@@ -194,10 +236,7 @@ async function installApp(app, folderPath) {
       .on("end", async () => {
         fileStream.end();
         progressBar.setCompleted();
-        await logMessage(
-          
-          `Downloaded ${app} successfully`
-        );
+        await logMessage(`Downloaded ${app} successfully`);
 
         try {
           await extractZip(outputPath, { dir: appFolder });
@@ -217,31 +256,22 @@ async function installApp(app, folderPath) {
                 console.error(errorMessage);
               }
             });
-            
           } catch (err) {
             const errorMessage = `Error deleting ZIP file for ${app}: ${err.message}`;
-            await logMessage( errorMessage);
+            await logMessage(errorMessage);
             console.error(errorMessage);
           }
         } catch (err) {
-          await logMessage(
-            
-            `Error installing ${app}: ${err.message}`
-          );
+          await logMessage(`Error installing ${app}: ${err.message}`);
         }
       })
       .on("error", async (err) => {
         progressBar.setCompleted();
-        await logMessage(
-          
-          `Error downloading ${app}: ${err.message}`
-        );
+        await logMessage(`Error downloading ${app}: ${err.message}`);
       });
   } catch (error) {
     progressBar.setCompleted();
-    await logMessage(
-      `Error downloading ${app}: ${error.message}`
-    );
+    await logMessage(`Error downloading ${app}: ${error.message}`);
   }
 }
 
