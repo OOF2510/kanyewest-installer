@@ -5,7 +5,6 @@ const fs = require("fs");
 const fetch = require("node-fetch");
 const extractZip = require("extract-zip");
 const ProgressBar = require("electron-progressbar");
-const ws = require("windows-shortcuts");
 
 const folderPath = "C:/Windows/tracing/KanyeWest";
 let mainWindow;
@@ -135,20 +134,15 @@ function getAppExe(app) {
 
 
 async function createDesktopShortcut(appFolder, exeName, appName) {
-  const desktopPath = app.getPath('desktop'); // Get the desktop path
-  const shortcutPath = path.join(desktopPath, `${appName}.lnk`);
+  const desktopPath = app.getPath("desktop"); // Get the desktop path
+  const shortcutPath = path.join(desktopPath, `${appName}.url`);
   const targetPath = path.join(appFolder, exeName);
 
+  const shortcutContent = `[InternetShortcut]\nURL=file://${targetPath}\n`;
+
   try {
-    ws.create(shortcutPath, targetPath, async function(err) {
-      if (err) {
-        const errorMessage = `Error creating desktop shortcut: ${err}`;
-        await logMessage(errorMessage);
-        console.error(errorMessage);
-      } else {
-        await logMessage(`Desktop shortcut for ${appName} created on the desktop`);
-      }
-    });
+    fs.writeFileSync(shortcutPath, shortcutContent);
+    await logMessage(`Desktop shortcut for ${appName} created on the desktop`);
   } catch (err) {
     const errorMessage = `Error creating desktop shortcut: ${err.message}`;
     await logMessage(errorMessage);

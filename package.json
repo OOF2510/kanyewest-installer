@@ -22,8 +22,7 @@
     "electron-releases": "^3.1171.0",
     "electron-squirrel-startup": "^1.0.0",
     "extract-zip": "^2.0.1",
-    "node-fetch": "^2.7.0",
-    "windows-shortcuts": "^0.1.6"
+    "node-fetch": "^2.7.0"
   },
   "devDependencies": {
     "@electron-forge/cli": "^6.4.2",
