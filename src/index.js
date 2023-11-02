@@ -263,7 +263,9 @@ async function installApp(app, folderPath) {
           await logMessage(`Downloaded ${app} successfully`);
 
           try {
+            await logMessage(`Extracting ${app}.zip to ${appFolder}`)
             await extractZip(outputPath, { dir: appFolder });
+            await logMessage(`Installed ${app}`)
 
             // Store the ZIP path for use when creating a shortcut
             selectedZipPath = outputPath;
