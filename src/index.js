@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const { exec } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -196,84 +196,143 @@ IconIndex=0
 }
 
 async function installApp(app, folderPath) {
-  const appUrl = `https://kanyewestappdl.netlify.app/${app}.zip`;
-  const appFolder = path.join(folderPath, app);
-  const progressBar = new ProgressBar({
-    indeterminate: false,
-    text: `Downloading ${app}`,
-    detail: "0%",
-    browserWindow: {
-      webPreferences: {
-        nodeIntegration: true,
+  return new Promise(async (resolve, reject) => {
+    const appUrl = `https://kanyewestappdl.netlify.app/${app}.zip`;
+    const appFolder = path.join(folderPath, app);
+
+    const progressBar = new ProgressBar({
+      indeterminate: false,
+      text: `Downloading ${app}`,
+      detail: "0%",
+      browserWindow: {
+        webPreferences: {
+          nodeIntegration: true,
+        },
+        parent: mainWindow,
       },
-      parent: mainWindow,
-    },
-  });
-
-  try {
-    await createFolder(appFolder);
-    const response = await fetch(appUrl);
-
-    if (!response.ok) {
-      progressBar.setCompleted();
-      await logMessage(`Error downloading ${app}: ${response.statusText}`);
-      return;
-    }
-
-    const contentLength = +response.headers.get("content-length");
-    const outputPath = path.join(appFolder, `${app}.zip`);
-    const fileStream = fs.createWriteStream(outputPath);
+    });
 
     let receivedBytes = 0;
+    let retryCount = 0;
+    let selectedZipPath = null; // Store the selected ZIP file path
 
-    response.body
-      .on("data", (chunk) => {
-        receivedBytes += chunk.length;
-        const progress = ((receivedBytes / contentLength) * 100).toFixed(2);
-        progressBar.detail = `${progress}%`;
-        fileStream.write(chunk);
-      })
-      .on("end", async () => {
-        fileStream.end();
-        progressBar.setCompleted();
-        await logMessage(`Downloaded ${app} successfully`);
+    try {
+      await createFolder(appFolder);
 
-        try {
-          await extractZip(outputPath, { dir: appFolder });
-
-          // Create a desktop shortcut if an executable mapping exists
-          const exe = getAppExe(app);
-          if (exe) {
-            await createDesktopShortcut(appFolder, exe, app);
-          }
-
-          // Delete the ZIP file
-          try {
-            fs.unlink(outputPath, async (err) => {
-              if (err) {
-                const errorMessage = `Error deleting ZIP file for ${app}: ${err.message}`;
-                await logMessage(errorMessage);
-                console.error(errorMessage);
-              }
-            });
-          } catch (err) {
-            const errorMessage = `Error deleting ZIP file for ${app}: ${err.message}`;
-            await logMessage(errorMessage);
-            console.error(errorMessage);
-          }
-        } catch (err) {
-          await logMessage(`Error installing ${app}: ${err.message}`);
-        }
-      })
-      .on("error", async (err) => {
+      async function handleDownloadError(err) {
         progressBar.setCompleted();
         await logMessage(`Error downloading ${app}: ${err.message}`);
-      });
-  } catch (error) {
-    progressBar.setCompleted();
-    await logMessage(`Error downloading ${app}: ${error.message}`);
-  }
+
+        if (retryCount < 1) {
+          // Retry downloading the ZIP file once
+          retryCount++;
+          logMessage(`Retrying download for ${app}`);
+          installApp(app, folderPath)
+            .then((zipPath) => resolve(zipPath)) // Pass the selected ZIP path to the outer promise
+            .catch(reject);
+        } else {
+          // If the retry also fails, open the download link in the browser
+          await logMessage(`Retry download for ${app} failed. Opening download link in the browser.`);
+          openDownloadLinkInBrowser(appUrl)
+            .then((zipPath) => resolve(zipPath)) // Pass the selected ZIP path to the outer promise
+            .catch(reject);
+        }
+      }
+
+      const response = await fetch(appUrl);
+
+      if (!response.ok) {
+        handleDownloadError(new Error(`Response status: ${response.status} - ${response.statusText}`));
+        return;
+      }
+
+      const contentLength = +response.headers.get("content-length");
+      const outputPath = path.join(appFolder, `${app}.zip`);
+      const fileStream = fs.createWriteStream(outputPath);
+
+      response.body
+        .on("data", (chunk) => {
+          receivedBytes += chunk.length;
+          const progress = ((receivedBytes / contentLength) * 100).toFixed(2);
+          progressBar.detail = `${progress}%`;
+          fileStream.write(chunk);
+        })
+        .on("end", async () => {
+          fileStream.end();
+          progressBar.setCompleted();
+          await logMessage(`Downloaded ${app} successfully`);
+
+          try {
+            await extractZip(outputPath, { dir: appFolder });
+
+            // Store the ZIP path for use when creating a shortcut
+            selectedZipPath = outputPath;
+
+            // Create a desktop shortcut if an executable mapping exists
+            const exe = getAppExe(app);
+            if (exe) {
+              await createDesktopShortcut(appFolder, exe, app, outputPath);
+            }
+
+            // Delete the ZIP file
+            try {
+              fs.unlink(outputPath, async (err) => {
+                if (err) {
+                  const errorMessage = `Error deleting ZIP file for ${app}: ${err.message}`;
+                  await logMessage(errorMessage);
+                  console.error(errorMessage);
+                }
+              });
+            } catch (err) {
+              const errorMessage = `Error deleting ZIP file for ${app}: ${err.message}`;
+              await logMessage(errorMessage);
+              console.error(errorMessage);
+            }
+
+            // Resolve the promise with the selected ZIP file path
+            resolve(selectedZipPath);
+          } catch (err) {
+            await logMessage(`Error installing ${app}: ${err.message}`);
+            // Reject the promise with the error
+            reject(err);
+          }
+        })
+        .on("error", handleDownloadError);
+    } catch (error) {
+      handleDownloadError(error);
+    }
+  });
 }
+
+async function openDownloadLinkInBrowser(url) {
+  return new Promise(async (resolve, reject) => {
+    // Open the download link in the default browser
+    shell.openExternal(url);
+
+    // Prompt the user to select the downloaded ZIP file
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      title: 'Select Downloaded ZIP File',
+      buttonLabel: 'Select',
+      filters: [
+        { name: 'ZIP Files', extensions: ['zip'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+
+    if (!result.canceled) {
+      const selectedZipPath = result.filePaths[0];
+      await logMessage(`Selected ZIP file: ${selectedZipPath}`);
+      // Resolve the promise with the selected ZIP file path
+      resolve(selectedZipPath);
+    } else {
+      await logMessage('No ZIP file selected. Installation aborted.');
+      // Reject the promise with an error
+      reject(new Error('No ZIP file selected.'));
+    }
+  });
+}
+
 
 async function logMessage(message) {
   mainWindow.webContents.send("installation-status", message);

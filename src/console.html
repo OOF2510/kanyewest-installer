@@ -1,19 +1,28 @@
 <!DOCTYPE html>
 <html>
   <body>
-    <div id="log" style="height: 600px; overflow: auto;"></div>
+    <div id="log" style="height: 400px; overflow: auto;"></div>
+    <h1>Installing... Kanye Will Tell You When Its Done</h1>
+    <img id="kanyeImage" src="../assets/kanyeStare.png" style="display: none; width: 100%; height: auto;">
     <script>
       const { ipcRenderer } = require("electron");
 
       const logDiv = document.getElementById("log");
+      const kanyeImage = document.getElementById("kanyeImage");
 
       ipcRenderer.on("installation-status", (event, message) => {
         const logMessage = document.createElement("p");
         logMessage.textContent = message;
         logDiv.appendChild(logMessage);
-        
+
         // Automatically scroll to the bottom of the log
         logDiv.scrollTop = logDiv.scrollHeight;
+
+        if (message.includes("Installation complete")) {
+          // Show the Kanye image and hide the <h1> element
+          kanyeImage.style.display = "block";
+          document.querySelector("h1").style.display = "none";
+        }
       });
     </script>
   </body>
