@@ -161,6 +161,10 @@ function getAppExe(app) {
       return "SuperTuxPortable.exe";
     case "ultrasurf":
       return "ultrasurf.exe";
+    case "ss":
+      return "ss2013.exe";
+    case "superhot":
+      return "SUPERHOT-Launcher.exe";
     default:
       return "";
   }
